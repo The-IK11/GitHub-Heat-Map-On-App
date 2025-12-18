@@ -145,4 +145,24 @@ class ApiService{
 
     return totalStars;
   }
+
+  Future<String> fetchUserAvatar(String username) async {
+    const query = r'''
+    query ($login: String!) {
+      user(login: $login) {
+        avatarUrl
+      }
+    }
+    ''';
+
+    final response = await _dio.post(
+      '',
+      data: {
+        'query': query,
+        'variables': {'login': username},
+      },
+    );
+
+    return response.data['data']['user']['avatarUrl'];
+  }
 }

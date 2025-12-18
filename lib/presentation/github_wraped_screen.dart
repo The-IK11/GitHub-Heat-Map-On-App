@@ -22,7 +22,7 @@ class GithubWrapedScreen extends StatelessWidget {
       appBar: AppBar(
         backgroundColor: Colors.transparent,
         elevation: 0,
-        title: Text('GitHub Summary - $username', style: TextStyle(color: Colors.white),),
+        title: Text('GitHub Summary', style: TextStyle(color: Colors.white),),
         centerTitle: true,
       ),
       body: SafeArea(
@@ -53,6 +53,59 @@ class GithubWrapedScreen extends StatelessWidget {
                 padding: const EdgeInsets.all(16),
                 child: Column(
                   children: [
+                    // User Avatar and Info Header
+                    Row(
+                      children: [
+                        FutureBuilder<String>(
+                          future: apiService.fetchUserAvatar(username),
+                          builder: (context, snapshot) {
+                            if (!snapshot.hasData) {
+                              return CircleAvatar(
+                                radius: 35,
+                                backgroundColor: Colors.grey.shade700,
+                                child: const Icon(Icons.person, size: 40, color: Colors.white),
+                              );
+                            }
+                            return CircleAvatar(
+                              radius: 35,
+                              backgroundImage: NetworkImage(snapshot.data!),
+                            );
+                          },
+                        ),
+                        const SizedBox(width: 16),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              ShaderMask(
+                                shaderCallback: (bounds) => LinearGradient(
+                                  colors: [Colors.cyan, Colors.blue, Colors.purple],
+                                  begin: Alignment.topLeft,
+                                  end: Alignment.bottomRight,
+                                ).createShader(bounds),
+                                child: Text(
+                                  '@$username',
+                                  style: const TextStyle(
+                                    fontSize: 18,
+                                    fontWeight: FontWeight.bold,
+                                    color: Colors.white,
+                                  ),
+                                ),
+                              ),
+                              const SizedBox(height: 4),
+                              Text(
+                                'GitHub Profile',
+                                style: TextStyle(
+                                  fontSize: 14,
+                                  color: Colors.white70,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 20),
                     // Heatmap preview with proper coloring
                     Container(
                       alignment: Alignment.center,
@@ -116,6 +169,9 @@ class GithubWrapedScreen extends StatelessWidget {
                 runSpacing: 12,
                 children: _statCards(context),
               ),
+              const SizedBox(height: 30),
+              // Watermark with shimmer effect
+              _ShimmerWatermark(),
             ],
           ),
         ),
@@ -285,72 +341,6 @@ class GithubWrapedScreen extends StatelessWidget {
   }
 }
 
-class _HeatmapDisplay extends StatelessWidget {
-  final Map<DateTime, int> heatmapData;
-
-  const _HeatmapDisplay({required this.heatmapData});
-
-  @override
-  Widget build(BuildContext context) {
-    if (heatmapData.isEmpty) {
-      return const Center(
-        child: Text(
-          'No contribution data available',
-          style: TextStyle(color: Colors.white70),
-        ),
-      );
-    }
-
-    // Simple grid of colored squares to mimic heatmap
-    return LayoutBuilder(builder: (context, constraints) {
-      final cols = 20;
-      final rows = 5;
-      final gap = 4.0;
-      final cellSize = (constraints.maxWidth - (cols - 1) * gap) / cols;
-
-      // Get sorted dates to display
-      final sortedDates = heatmapData.keys.toList()..sort();
-
-      return Column(
-        children: List.generate(rows, (r) {
-          return Padding(
-            padding: EdgeInsets.only(bottom: r == rows - 1 ? 0 : gap),
-            child: Row(
-              children: List.generate(cols, (c) {
-                final index = r * cols + c;
-                final color = index < sortedDates.length
-                    ? _getColorForContributions(heatmapData[sortedDates[index]] ?? 0)
-                    : Colors.transparent;
-
-                return Padding(
-                  padding: EdgeInsets.only(right: c == cols - 1 ? 0 : gap),
-                  child: Container(
-                    width: cellSize,
-                    height: cellSize,
-                    decoration: BoxDecoration(
-                      color: color,
-                      borderRadius: BorderRadius.circular(4),
-                    ),
-                  ),
-                );
-              }),
-            ),
-          );
-        }),
-      );
-    });
-  }
-
-  Color _getColorForContributions(int count) {
-    if (count == 0) return Colors.grey.shade900;
-    if (count < 5) return Colors.green.shade900;
-    if (count < 15) return Colors.green.shade700;
-    if (count < 30) return Colors.green.shade500;
-    return Colors.green.shade300;
-  }
-}
-
-
 class _StatItem {
   final String title;
   final String value;
@@ -423,6 +413,67 @@ class _StatCard extends StatelessWidget {
             ),
           )
         ],
+      ),
+    );
+  }
+}
+
+class _ShimmerWatermark extends StatefulWidget {
+  const _ShimmerWatermark();
+
+  @override
+  State<_ShimmerWatermark> createState() => _ShimmerWatermarkState();
+}
+
+class _ShimmerWatermarkState extends State<_ShimmerWatermark> with SingleTickerProviderStateMixin {
+  late AnimationController _animationController;
+
+  @override
+  void initState() {
+    super.initState();
+    _animationController = AnimationController(
+      duration: const Duration(seconds: 2),
+      vsync: this,
+    )..repeat();
+  }
+
+  @override
+  void dispose() {
+    _animationController.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Center(
+      child: AnimatedBuilder(
+        animation: _animationController,
+        builder: (context, child) {
+          final value = _animationController.value;
+          return ShaderMask(
+            shaderCallback: (bounds) {
+              return LinearGradient(
+                begin: Alignment(-1 - value * 2, 0),
+                end: Alignment(value * 2, 0),
+                colors: [
+                  Colors.transparent,
+                  Colors.white.withAlpha(100),
+                  Colors.transparent,
+                ],
+                stops: const [0.0, 0.5, 1.0],
+              ).createShader(bounds);
+            },
+            child: Text(
+              'Made by The-IK11-Flutter',
+              style: TextStyle(
+                fontSize: 14,
+                fontWeight: FontWeight.w600,
+                color: Colors.white.withAlpha(200),
+                letterSpacing: 0.5,
+              ),
+            ),
+          );
+        },
       ),
     );
   }
