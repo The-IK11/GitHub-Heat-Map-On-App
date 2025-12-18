@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_heatmap_calendar/flutter_heatmap_calendar.dart';
 import 'package:github_heat_map/data/api.dart';
 
-class GithubWrapedScreen extends StatelessWidget {
+class GithubWrapedScreen extends StatefulWidget {
   final String username;
   final Map<DateTime, int> heatmapData;
   final ApiService apiService;
@@ -13,6 +13,61 @@ class GithubWrapedScreen extends StatelessWidget {
     required this.heatmapData,
     required this.apiService,
   });
+
+  @override
+  State<GithubWrapedScreen> createState() => _GithubWrapedScreenState();
+}
+
+class _GithubWrapedScreenState extends State<GithubWrapedScreen> with TickerProviderStateMixin {
+  late AnimationController _mainController;
+  late AnimationController _cardsController;
+  late List<AnimationController> _cardControllers;
+
+  @override
+  void initState() {
+    super.initState();
+    _mainController = AnimationController(
+      duration: const Duration(milliseconds: 800),
+      vsync: this,
+    )..forward();
+
+    _cardsController = AnimationController(
+      duration: const Duration(milliseconds: 600),
+      vsync: this,
+    );
+
+    _cardControllers = [];
+    for (int i = 0; i < 8; i++) {
+      _cardControllers.add(
+        AnimationController(
+          duration: const Duration(milliseconds: 500),
+          vsync: this,
+        ),
+      );
+    }
+
+    Future.delayed(const Duration(milliseconds: 300), () {
+      if (mounted) {
+        for (int i = 0; i < _cardControllers.length; i++) {
+          Future.delayed(Duration(milliseconds: 100 * i), () {
+            if (mounted) {
+              _cardControllers[i].forward();
+            }
+          });
+        }
+      }
+    });
+  }
+
+  @override
+  void dispose() {
+    _mainController.dispose();
+    _cardsController.dispose();
+    for (var controller in _cardControllers) {
+      controller.dispose();
+    }
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -31,8 +86,14 @@ class GithubWrapedScreen extends StatelessWidget {
           child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              // Top heatmap card
-              Container(
+              // Top heatmap card with animation
+              ScaleTransition(
+                scale: Tween<double>(begin: 0.8, end: 1.0).animate(
+                  CurvedAnimation(parent: _mainController, curve: Curves.easeOutCubic),
+                ),
+                child: FadeTransition(
+                  opacity: _mainController,
+                  child: Container(
             //    height: 200,
                 alignment: Alignment.center,
                 decoration: BoxDecoration(
@@ -57,7 +118,7 @@ class GithubWrapedScreen extends StatelessWidget {
                     Row(
                       children: [
                         FutureBuilder<String>(
-                          future: apiService.fetchUserAvatar(username),
+                          future: widget.apiService.fetchUserAvatar(widget.username),
                           builder: (context, snapshot) {
                             if (!snapshot.hasData) {
                               return CircleAvatar(
@@ -84,7 +145,7 @@ class GithubWrapedScreen extends StatelessWidget {
                                   end: Alignment.bottomRight,
                                 ).createShader(bounds),
                                 child: Text(
-                                  '@$username',
+                                  '@${widget.username}',
                                   style: const TextStyle(
                                     fontSize: 18,
                                     fontWeight: FontWeight.bold,
@@ -117,7 +178,7 @@ class GithubWrapedScreen extends StatelessWidget {
                       child: HeatMap(
                         startDate: DateTime.now().subtract(const Duration(days: 365)),
                         endDate: DateTime.now(),
-                        datasets: heatmapData,
+                        datasets: widget.heatmapData,
                         colorMode: ColorMode.color,
                         defaultColor: Colors.grey.shade800,
                         textColor: Colors.white,
@@ -139,7 +200,7 @@ class GithubWrapedScreen extends StatelessWidget {
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Text(
-                          '${heatmapData.values.fold<int>(0, (sum, count) => sum + count)} contributions in 2025',
+                          '${widget.heatmapData.values.fold<int>(0, (sum, count) => sum + count)} contributions in 2025',
                           style: theme.textTheme.bodyLarge?.copyWith(
                             color: Colors.white70,
                           ),
@@ -159,6 +220,8 @@ class GithubWrapedScreen extends StatelessWidget {
                       ],
                     )
                   ],
+                ),
+              ),
                 ),
               ),
               const SizedBox(height: 20),
@@ -181,7 +244,7 @@ class GithubWrapedScreen extends StatelessWidget {
 
   List<Widget> _statCards(BuildContext context) {
     // Calculate metrics from heatmap data
-    final totalCommits = heatmapData.values.fold<int>(0, (sum, count) => sum + count);
+    final totalCommits = widget.heatmapData.values.fold<int>(0, (sum, count) => sum + count);
     final longestStreak = _calculateLongestStreak();
     final mostActiveMonth = _getMostActiveMonth();
     final mostActiveDay = _getMostActiveDay();
@@ -199,48 +262,78 @@ class GithubWrapedScreen extends StatelessWidget {
 
     final cardWidth = (MediaQuery.of(context).size.width - 16 * 2 - 12) / 2 - 6;
 
-    final List<Widget> cards = items.map((i) => SizedBox(
-      width: cardWidth,
-      child: _StatCard(item: i),
-    )).toList();
+    final List<Widget> cards = [];
+    
+    for (int i = 0; i < items.length; i++) {
+      cards.add(
+        SizedBox(
+          width: cardWidth,
+          child: SlideTransition(
+            position: Tween<Offset>(begin: const Offset(0, 0.5), end: Offset.zero).animate(
+              CurvedAnimation(parent: _cardControllers[i], curve: Curves.easeOutCubic),
+            ),
+            child: FadeTransition(
+              opacity: _cardControllers[i],
+              child: _StatCard(item: items[i]),
+            ),
+          ),
+        ),
+      );
+    }
 
-    // Add Total Stars card as FutureBuilder
+    // Add Total Stars card as FutureBuilder with animation
     cards.insert(5, SizedBox(
       width: cardWidth,
-      child: FutureBuilder<int>(
-        future: apiService.fetchTotalStars(username),
-        builder: (context, snapshot) {
-          String displayValue = 'Loading...';
-          if (snapshot.hasData) {
-            displayValue = '⭐ ${snapshot.data}';
-          } else if (snapshot.hasError) {
-            displayValue = 'Error';
-          }
-          
-          return _StatCard(
-            item: _StatItem('Total Stars', displayValue, Icons.star, Colors.amber),
-          );
-        },
+      child: SlideTransition(
+        position: Tween<Offset>(begin: const Offset(0, 0.5), end: Offset.zero).animate(
+          CurvedAnimation(parent: _cardControllers[5], curve: Curves.easeOutCubic),
+        ),
+        child: FadeTransition(
+          opacity: _cardControllers[5],
+          child: FutureBuilder<int>(
+            future: widget.apiService.fetchTotalStars(widget.username),
+            builder: (context, snapshot) {
+              String displayValue = 'Loading...';
+              if (snapshot.hasData) {
+                displayValue = '⭐ ${snapshot.data}';
+              } else if (snapshot.hasError) {
+                displayValue = 'Error';
+              }
+              
+              return _StatCard(
+                item: _StatItem('Total Stars', displayValue, Icons.star, Colors.amber),
+              );
+            },
+          ),
+        ),
       ),
     ));
 
-    // Add Top Language card as FutureBuilder
+    // Add Top Language card as FutureBuilder with animation
     cards.insert(6, SizedBox(
       width: cardWidth,
-      child: FutureBuilder<String?>(
-        future: apiService.fetchTopLanguage(username),
-        builder: (context, snapshot) {
-          String displayValue = 'Loading...';
-          if (snapshot.hasData) {
-            displayValue = snapshot.data ?? 'N/A';
-          } else if (snapshot.hasError) {
-            displayValue = 'Error';
-          }
-          
-          return _StatCard(
-            item: _StatItem('Top Language', displayValue, Icons.code, Colors.green),
-          );
-        },
+      child: SlideTransition(
+        position: Tween<Offset>(begin: const Offset(0, 0.5), end: Offset.zero).animate(
+          CurvedAnimation(parent: _cardControllers[6], curve: Curves.easeOutCubic),
+        ),
+        child: FadeTransition(
+          opacity: _cardControllers[6],
+          child: FutureBuilder<String?>(
+            future: widget.apiService.fetchTopLanguage(widget.username),
+            builder: (context, snapshot) {
+              String displayValue = 'Loading...';
+              if (snapshot.hasData) {
+                displayValue = snapshot.data ?? 'N/A';
+              } else if (snapshot.hasError) {
+                displayValue = 'Error';
+              }
+              
+              return _StatCard(
+                item: _StatItem('Top Language', displayValue, Icons.code, Colors.green),
+              );
+            },
+          ),
+        ),
       ),
     ));
 
@@ -249,15 +342,15 @@ class GithubWrapedScreen extends StatelessWidget {
 
   // Calculate longest consecutive contribution streak
   int _calculateLongestStreak() {
-    if (heatmapData.isEmpty) return 0;
+    if (widget.heatmapData.isEmpty) return 0;
 
-    final sortedDates = heatmapData.keys.toList()..sort();
+    final sortedDates = widget.heatmapData.keys.toList()..sort();
     int maxStreak = 0;
     int currentStreak = 0;
     DateTime? lastDate;
 
     for (final date in sortedDates) {
-      if (heatmapData[date]! > 0) {
+      if (widget.heatmapData[date]! > 0) {
         if (lastDate == null || date.difference(lastDate).inDays == 1) {
           currentStreak++;
         } else {
@@ -273,12 +366,12 @@ class GithubWrapedScreen extends StatelessWidget {
 
   // Get the month with most commits
   String _getMostActiveMonth() {
-    if (heatmapData.isEmpty) return 'N/A';
+    if (widget.heatmapData.isEmpty) return 'N/A';
 
     final monthCounts = <String, int>{};
     const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 
-    for (final entry in heatmapData.entries) {
+    for (final entry in widget.heatmapData.entries) {
       final month = months[entry.key.month - 1];
       monthCounts[month] = (monthCounts[month] ?? 0) + entry.value;
     }
@@ -297,12 +390,12 @@ class GithubWrapedScreen extends StatelessWidget {
 
   // Get the day of week with most commits
   String _getMostActiveDay() {
-    if (heatmapData.isEmpty) return 'N/A';
+    if (widget.heatmapData.isEmpty) return 'N/A';
 
     final dayCounts = <String, int>{};
     const daysOfWeek = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
 
-    for (final entry in heatmapData.entries) {
+    for (final entry in widget.heatmapData.entries) {
       final dayOfWeek = daysOfWeek[entry.key.weekday - 1];
       dayCounts[dayOfWeek] = (dayCounts[dayOfWeek] ?? 0) + entry.value;
     }
